@@ -18,7 +18,7 @@ class Chart
 		@times = rows[1].xpath("td[2]/text()").text.match(/(\d+)回/)[1].to_i
 		@score = rows[5].xpath("td[2]/text()").text.strip.to_i
 		rank_match = rows[6].xpath("td[2]/text()").text.match(/(\d+)位/)
-		@rank = rank_match ? rank_match[1] : 0
+		@rank = rank_match ? rank_match[1].to_i : 0
 	end
 
 	def to_s
