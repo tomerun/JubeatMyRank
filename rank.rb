@@ -5,24 +5,49 @@ require 'kconv'
 DOMAIN = 'https://p.eagate.573.jp'
 PROPERTY_FILE_NAME = 'prop.txt'
 
-class Music
-	attr_accessor :mid, :name, :score, :combo, :rank
+def page_to_doc(page)
+	Nokogiri::HTML(page.content.toutf8) # avoid encoding issue
+end
 
-	def initialize(agent, elem)
+class Chart
+	attr_accessor :score, :fullcombo, :level, :rank, :times
+
+	def initialize(agent, elem)  # elem = <div class="seq">
+		rows = elem.xpath("descendant::tr")
+		@level = rows[0].xpath("td[2]/text()").text.match(/LEVEL : (\d+)/)[1].to_i
+		@times = rows[1].xpath("td[2]/text()").text.match(/(\d+)回/)[1].to_i
+		@score = rows[5].xpath("td[2]/text()").text.strip.to_i
+		rank_match = rows[6].xpath("td[2]/text()").text.match(/(\d+)位/)
+		@rank = rank_match ? rank_match[1] : 0
+	end
+
+	def to_s
+		sprintf("LEVEL:%2d score:%7d%4s rank:%6d位 play:%2d回", @level, @score, @fullcombo ? '(FC)' : '', @rank, @times)
+	end
+
+end
+
+class Music
+	attr_accessor :mid, :name, :charts
+
+	def initialize(agent, elem)  # elem = <tr class="odd" or class="even">
 		@name = elem.xpath("td[2]/a/text()")
 		path = elem.xpath("td[2]/a/@href").text;
-		score_bsc = get_score(elem.xpath("td[3]/text()")[0].text.strip)
-		score_adv = get_score(elem.xpath("td[4]/text()")[0].text.strip.to_i)
-		score_ext = get_score(elem.xpath("td[5]/text()")[0].text.strip.to_i)
+		@mid = path.match(/mid=(\d+)/)[1].to_i
+
 		combo_bsc = elem.xpath("td[3]/div/@class").text.strip == 'fc1'
 		combo_adv = elem.xpath("td[4]/div/@class").text.strip == 'fc1'
 		combo_ext = elem.xpath("td[5]/div/@class").text.strip == 'fc1'
 
-		@mid = path.match(/mid=(\d+)/)[1].to_i
-		@score = [score_bsc, score_adv, score_ext]
-		@combo = [combo_bsc, combo_adv, combo_ext]
-
-		# TODO: read rank
+		music_page = page_to_doc(agent.get(DOMAIN + path));
+		chart_elems = music_page.xpath("//div[@id='seq_container']/div[@class='seq']")
+		@charts = []
+		3.times do |i|
+			@charts << Chart.new(agent, chart_elems[i])
+		end
+		@charts[0].fullcombo = combo_bsc
+		@charts[1].fullcombo = combo_adv
+		@charts[2].fullcombo = combo_ext
 	end
 
 	def get_score(str)
@@ -30,7 +55,7 @@ class Music
 	end
 
 	def to_s
-		"id:#{@mid} name:#{@name} score(BSC):#{score[0]} #{combo[0]} score(ADV):#{score[1]} #{combo[1]} score(EXT):#{score[2]} #{combo[2]}"
+		"id:#{@mid} name:#{@name}\n  [BSC] #{charts[0]}\n  [ADV] #{charts[1]}\n  [EXT] #{charts[2]}" 
 	end
 end
 
@@ -48,7 +73,7 @@ end
 
 def get_results(agent)
 	list = []
-	1.upto(12) do |idx| # todo: retrieve number of pages automatically
+	1.upto(12) do |idx| # TODO: retrieve total number of pages automatically
 		page = agent.get("#{DOMAIN}/game/jubeat/prop/p/playdata/music.html?sort=&page=#{idx}")
 		get_results_page(agent, page, list)
 	end
@@ -56,12 +81,12 @@ def get_results(agent)
 end
 
 def get_results_page(agent, page, list)
-	doc = Nokogiri::HTML(page.content.toutf8)
+	doc = page_to_doc(page)
 	doc.xpath("//table[@id='play_music_table']//tr[position() > 2]").each do |elem|
+		sleep(0.5)
 		list << Music.new(agent, elem);
 	end
 end
-
 
 def main
 	agent = Mechanize::new
