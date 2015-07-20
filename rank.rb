@@ -66,35 +66,36 @@ def login(agent)
 	page = agent.get("#{DOMAIN}/gate/p/login.html");
 	agent.page.encoding = 'Shift_JIS'
 	form = page.forms[0]
-	form.KID = "#{id}"
-	form.pass = "#{pass}"
+	form.KID = id
+	form.pass = pass
 	agent.submit(form)
 end
 
 def get_results(agent)
-	list = []
-	1.upto(12) do |idx| # TODO: retrieve total number of pages automatically
+	(1..12).flat_map do |idx| # TODO: retrieve total number of pages automatically
+		puts "fetching page #{idx}..."
 		page = agent.get("#{DOMAIN}/game/jubeat/prop/p/playdata/music.html?sort=&page=#{idx}")
-		get_results_page(agent, page, list)
+		get_results_page(agent, page)
 	end
-	return list
 end
 
-def get_results_page(agent, page, list)
+def get_results_page(agent, page)
 	doc = page_to_doc(page)
-	doc.xpath("//table[@id='play_music_table']//tr[position() > 2]").each do |elem|
+	doc.xpath("//table[@id='play_music_table']//tr[position() > 2]").map do |elem|
 		sleep(0.5)
-		list << Music.new(agent, elem);
+		Music.new(agent, elem);
 	end
+end
+
+def download_result
+	agent = Mechanize::new
+	login(agent)
+	return get_results(agent)
 end
 
 def main
-	agent = Mechanize::new
-	login(agent)
-	music_list = get_results(agent)
-	puts music_list
+	puts download_result
 end
-
 
 main
 
